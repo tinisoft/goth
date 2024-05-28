@@ -16,6 +16,8 @@ import (
 	"golang.org/x/oauth2"
 )
 
+var generateCodeVerifier = oauth2.GenerateVerifier
+
 const (
 	// Standard Claims http://openid.net/specs/openid-connect-core-1_0.html#StandardClaims
 	// fixed, cannot be changed
@@ -69,6 +71,8 @@ type Provider struct {
 	LocationClaims  []string
 
 	SkipUserInfoRequest bool
+
+	GenerateCodeVerifier func() string
 }
 
 type OpenIDConfig struct {
@@ -134,6 +138,8 @@ func NewNamed(name, clientKey, secret, callbackURL, openIDAutoDiscoveryURL strin
 		LocationClaims:  []string{AddressClaim},
 
 		providerName: name,
+
+		GenerateCodeVerifier: generateCodeVerifier,
 	}
 
 	openIDConfig, err := getOpenIDConfig(p, openIDAutoDiscoveryURL)
@@ -170,6 +176,8 @@ func NewCustomisedURL(clientKey, secret, callbackURL, authURL, tokenURL, issuerU
 		LocationClaims:  []string{AddressClaim},
 
 		providerName: "openid-connect",
+
+		GenerateCodeVerifier: generateCodeVerifier,
 	}
 
 	p.config = newConfig(p, scopes, p.OpenIDConfig)
@@ -195,9 +203,15 @@ func (p *Provider) Debug(debug bool) {}
 
 // BeginAuth asks the OpenID Connect provider for an authentication end-point.
 func (p *Provider) BeginAuth(state string) (goth.Session, error) {
-	url := p.config.AuthCodeURL(state)
+	if p.GenerateCodeVerifier == nil {
+		p.GenerateCodeVerifier = generateCodeVerifier
+	}
+
+	verifier := p.GenerateCodeVerifier()
+	url := p.config.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
 	session := &Session{
-		AuthURL: url,
+		AuthURL:      url,
+		CodeVerifier: verifier,
 	}
 	return session, nil
 }
